@@ -1,46 +1,28 @@
-exports.handler = async (event) => {
-  const target = event.queryStringParameters?.url;
-  if (!target) {
-    return { statusCode: 400, body: 'Missing url' };
+export async function handler(event) {
+  const url = event.queryStringParameters?.url;
+  if (!url || !/^https?:\/\//i.test(url)) {
+    return { statusCode: 400, body: 'Missing image url' };
   }
-
-  let parsed;
   try {
-    parsed = new URL(target);
-  } catch {
-    return { statusCode: 400, body: 'Invalid url' };
-  }
-
-  const allowedHosts = new Set(['www.metal-archives.com', 'metal-archives.com']);
-  if (!allowedHosts.has(parsed.hostname)) {
-    return { statusCode: 403, body: 'Host not allowed' };
-  }
-
-  try {
-    const response = await fetch(parsed.toString(), {
-      headers: {
-        'User-Agent': 'ArturMetalCollection/1.1 (+Netlify Function)',
-        'Referer': 'https://www.metal-archives.com/'
-      }
-    });
-
-    if (!response.ok) {
-      return { statusCode: response.status, body: `Cover fetch failed: ${response.status}` };
-    }
-
-    const arrayBuffer = await response.arrayBuffer();
-    const contentType = response.headers.get('content-type') || 'image/jpeg';
-
+    const headers = {
+      'User-Agent': process.env.DISCOGS_USER_AGENT || 'BibliotekaPlyt/3.0 +https://netlify.app',
+      'Accept': 'image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8'
+    };
+    if (process.env.DISCOGS_TOKEN) headers.Authorization = `Discogs token=${process.env.DISCOGS_TOKEN}`;
+    const res = await fetch(url, { headers });
+    if (!res.ok) return { statusCode: res.status, body: 'Image fetch failed' };
+    const arrayBuffer = await res.arrayBuffer();
+    const contentType = res.headers.get('content-type') || 'image/jpeg';
     return {
       statusCode: 200,
-      isBase64Encoded: true,
       headers: {
-        'Content-Type': contentType,
-        'Cache-Control': 'public, max-age=604800'
+        'content-type': contentType,
+        'cache-control': 'public, max-age=86400'
       },
-      body: Buffer.from(arrayBuffer).toString('base64')
+      body: Buffer.from(arrayBuffer).toString('base64'),
+      isBase64Encoded: true
     };
-  } catch (error) {
-    return { statusCode: 502, body: error.message };
+  } catch (err) {
+    return { statusCode: 500, body: err.message || 'Proxy error' };
   }
-};
+}

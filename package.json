@@ -1,6 +1,6 @@
 {
-  "name": "metal-collection-app",
-  "version": "1.0.0",
+  "name": "metal-collection-app-discogs",
+  "version": "3.0.0",
   "private": true,
   "type": "module",
   "scripts": {

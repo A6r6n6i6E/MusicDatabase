@@ -1,230 +1,255 @@
-import React, { useMemo, useRef, useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { createRoot } from 'react-dom/client';
-import { Album, ChevronDown, Disc3, Download, GitBranch, Import, Loader2, Plus, Search, Trash2, Upload } from 'lucide-react';
+import { Search, Plus, Disc3, Upload, Download, Trash2, RefreshCcw, ChevronDown, ExternalLink, AlertTriangle } from 'lucide-react';
 import './styles.css';
 
-const STORAGE_KEY = 'metal-collection-v1';
+const STORAGE_KEY = 'biblioteka-plyt-discogs-v3';
 
-const demoAlbums = [
-  {
-    id: crypto.randomUUID(),
-    artist: 'Black Sabbath',
-    title: 'Paranoid',
-    year: '1970',
-    format: 'LP',
-    coverUrl: 'https://www.metal-archives.com/images/2/0/8/4/2084.jpg',
-    tracks: [
-      { number: '01', title: 'War Pigs', length: '7:57' },
-      { number: '02', title: 'Paranoid', length: '2:53' },
-      { number: '03', title: 'Planet Caravan', length: '4:35' }
-    ]
-  },
-  {
-    id: crypto.randomUUID(),
-    artist: 'Death',
-    title: 'Symbolic',
-    year: '1995',
-    format: 'CD',
-    coverUrl: 'https://www.metal-archives.com/images/6/1/8/618.jpg',
-    tracks: [
-      { number: '01', title: 'Symbolic', length: '6:32' },
-      { number: '02', title: 'Zero Tolerance', length: '4:48' },
-      { number: '03', title: 'Empty Words', length: '6:22' }
-    ]
-  }
-];
+function uid() {
+  return `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+}
 
-function readCollection() {
+function loadAlbums() {
   try {
-    const saved = localStorage.getItem(STORAGE_KEY);
-    return saved ? JSON.parse(saved) : demoAlbums;
+    return JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]');
   } catch {
-    return demoAlbums;
+    return [];
   }
 }
 
+function saveAlbums(albums) {
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(albums));
+}
+
+function PlaceholderCover() {
+  return (
+    <div className="cover placeholder">
+      <Disc3 size={54} />
+      <span>brak okładki</span>
+    </div>
+  );
+}
+
+function TrackList({ tracks }) {
+  if (!tracks?.length) return <p className="empty-track">Brak tracklisty. Spróbuj odświeżyć dane z Discogs albo dodaj utwory ręcznie w eksporcie JSON.</p>;
+  return (
+    <ol className="tracklist">
+      {tracks.map((track, index) => (
+        <li key={`${track.position}-${track.title}-${index}`}>
+          <span className="track-no">{track.position || index + 1}</span>
+          <span className="track-title">{track.title}</span>
+          {track.duration ? <span className="duration">{track.duration}</span> : null}
+        </li>
+      ))}
+    </ol>
+  );
+}
+
+function AlbumCard({ album, onDelete, onRefresh }) {
+  const [open, setOpen] = useState(false);
+  const [imageError, setImageError] = useState(false);
+  const country = album.country ? ` • ${album.country}` : '';
+  const year = album.year || album.released || 'brak roku';
+
+  return (
+    <article className="album-card">
+      <button className="cover-button" onClick={() => setOpen(!open)} aria-label="Rozwiń album">
+        {album.coverUrl && !imageError ? (
+          <img className="cover" src={album.coverUrl} alt={`Okładka ${album.title}`} onError={() => setImageError(true)} />
+        ) : <PlaceholderCover />}
+        <span className="format-pill">{album.mediaFormat || album.formatShort || 'Album'}</span>
+      </button>
+      <div className="album-body">
+        <div className="album-head">
+          <div>
+            <h3>{album.title}</h3>
+            <p>{album.artist} • {year}{country}</p>
+          </div>
+          <button className="round" onClick={() => setOpen(!open)} aria-label="Rozwiń tracklistę">
+            <ChevronDown className={open ? 'rotate' : ''} size={20} />
+          </button>
+        </div>
+        <div className="meta-grid">
+          {album.label ? <span>Label: {album.label}</span> : null}
+          {album.format ? <span>Format: {album.format}</span> : null}
+          {album.genres?.length ? <span>Gatunek: {album.genres.join(', ')}</span> : null}
+          {album.styles?.length ? <span>Styl: {album.styles.join(', ')}</span> : null}
+        </div>
+        {open ? (
+          <div className="expanded">
+            <TrackList tracks={album.tracks} />
+            {album.discogsUrl ? <a className="discogs-link" href={album.discogsUrl} target="_blank" rel="noreferrer">Otwórz w Discogs <ExternalLink size={14} /></a> : null}
+          </div>
+        ) : null}
+        <div className="actions-row">
+          <button className="ghost" onClick={() => onRefresh(album)}><RefreshCcw size={16} /> Odśwież dane</button>
+          <button className="danger" onClick={() => onDelete(album.id)}><Trash2 size={16} /> Usuń</button>
+        </div>
+      </div>
+    </article>
+  );
+}
+
+function AddAlbumForm({ onAdd }) {
+  const [form, setForm] = useState({ artist: '', title: '', year: '', mediaFormat: 'CD' });
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+  const [lastDebug, setLastDebug] = useState(null);
+
+  const update = (key, value) => setForm((prev) => ({ ...prev, [key]: value }));
+
+  async function submit(e) {
+    e.preventDefault();
+    setBusy(true);
+    setError('');
+    setLastDebug(null);
+    try {
+      const params = new URLSearchParams({
+        artist: form.artist,
+        title: form.title,
+        year: form.year,
+        format: form.mediaFormat
+      });
+      const res = await fetch(`/.netlify/functions/discogs-search?${params.toString()}`);
+      const data = await res.json();
+      if (!res.ok || !data.ok) {
+        setLastDebug(data);
+        throw new Error(data.message || 'Nie udało się pobrać danych z Discogs.');
+      }
+      const album = {
+        ...data.album,
+        id: uid(),
+        mediaFormat: form.mediaFormat,
+        createdAt: new Date().toISOString()
+      };
+      onAdd(album);
+      setForm({ artist: '', title: '', year: '', mediaFormat: 'CD' });
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <form className="panel form" onSubmit={submit}>
+      <div className="panel-title"><Plus size={20} /> Dodaj płytę z Discogs</div>
+      <label>Wykonawca<input value={form.artist} onChange={(e) => update('artist', e.target.value)} placeholder="np. Metallica" required /></label>
+      <label>Tytuł albumu<input value={form.title} onChange={(e) => update('title', e.target.value)} placeholder="np. Metallica" required /></label>
+      <div className="two-cols">
+        <label>Rok<input value={form.year} onChange={(e) => update('year', e.target.value)} placeholder="1991" /></label>
+        <label>Format<select value={form.mediaFormat} onChange={(e) => update('mediaFormat', e.target.value)}><option>CD</option><option>LP</option><option>Vinyl</option><option>Cassette</option><option>Box Set</option><option>Digital</option></select></label>
+      </div>
+      <button className="primary" disabled={busy}>{busy ? 'Pobieram z Discogs…' : 'Pobierz i dodaj'}</button>
+      {error ? <div className="error"><AlertTriangle size={16} /> {error}</div> : null}
+      {lastDebug?.code === 'MISSING_DISCOGS_TOKEN' ? <p className="hint">Dodaj DISCOGS_TOKEN do pliku .env lokalnie albo w panelu Netlify: Site configuration → Environment variables.</p> : null}
+    </form>
+  );
+}
+
 function App() {
-  const [albums, setAlbums] = useState(readCollection);
+  const [albums, setAlbums] = useState(loadAlbums);
   const [query, setQuery] = useState('');
   const [format, setFormat] = useState('all');
-  const [openId, setOpenId] = useState(null);
-  const [loading, setLoading] = useState(false);
-  const [message, setMessage] = useState('');
-  const fileRef = useRef(null);
+  const [refreshing, setRefreshing] = useState('');
 
-  const [form, setForm] = useState({ artist: '', title: '', year: '', format: 'CD', coverUrl: '' });
-
-  const persist = (next) => {
+  function setAndSave(next) {
     setAlbums(next);
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
-  };
+    saveAlbums(next);
+  }
+
+  function addAlbum(album) {
+    setAndSave([album, ...albums]);
+  }
+
+  function deleteAlbum(id) {
+    setAndSave(albums.filter((a) => a.id !== id));
+  }
+
+  async function refreshAlbum(album) {
+    setRefreshing(album.id);
+    try {
+      const params = new URLSearchParams({ artist: album.artist, title: album.title, year: album.year || '', format: album.mediaFormat || '' });
+      const res = await fetch(`/.netlify/functions/discogs-search?${params.toString()}`);
+      const data = await res.json();
+      if (!res.ok || !data.ok) throw new Error(data.message || 'Błąd odświeżania.');
+      const updated = { ...album, ...data.album, id: album.id, mediaFormat: album.mediaFormat || data.album.format, updatedAt: new Date().toISOString() };
+      setAndSave(albums.map((a) => (a.id === album.id ? updated : a)));
+    } catch (err) {
+      alert(err.message);
+    } finally {
+      setRefreshing('');
+    }
+  }
 
   const filtered = useMemo(() => {
     const q = query.toLowerCase().trim();
-    return albums
-      .filter((album) => format === 'all' || album.format === format)
-      .filter((album) => !q || `${album.artist} ${album.title} ${album.year}`.toLowerCase().includes(q))
-      .sort((a, b) => `${a.artist} ${a.year}`.localeCompare(`${b.artist} ${b.year}`));
+    return albums.filter((a) => {
+      const text = `${a.artist} ${a.title} ${a.year} ${a.country} ${a.label}`.toLowerCase();
+      const matchesQuery = !q || text.includes(q);
+      const matchesFormat = format === 'all' || (a.mediaFormat || a.format || '').toLowerCase().includes(format.toLowerCase());
+      return matchesQuery && matchesFormat;
+    });
   }, [albums, query, format]);
-
-  const stats = useMemo(() => ({
-    total: albums.length,
-    cd: albums.filter(a => a.format === 'CD').length,
-    lp: albums.filter(a => a.format === 'LP').length,
-    artists: new Set(albums.map(a => a.artist.toLowerCase())).size
-  }), [albums]);
-
-  async function addAlbum(event) {
-    event.preventDefault();
-    if (!form.artist.trim() || !form.title.trim()) {
-      setMessage('Podaj przynajmniej wykonawcę i tytuł albumu.');
-      return;
-    }
-
-    setLoading(true);
-    setMessage('Szukam albumu i tracklisty...');
-    let imported = null;
-    try {
-      const url = `/.netlify/functions/album-search?artist=${encodeURIComponent(form.artist)}&title=${encodeURIComponent(form.title)}&year=${encodeURIComponent(form.year)}`;
-      const response = await fetch(url);
-      const data = await response.json();
-      if (response.ok) imported = data;
-      else setMessage(data.error || 'Nie znaleziono albumu. Dodaję pustą kartę.');
-    } catch {
-      setMessage('Funkcja pobierania danych nie jest dostępna lokalnie bez Netlify Dev. Dodaję pustą kartę.');
-    }
-
-    const nextAlbum = {
-      id: crypto.randomUUID(),
-      artist: imported?.artist || form.artist.trim(),
-      title: imported?.title || form.title.trim(),
-      year: imported?.year || form.year.trim(),
-      format: form.format,
-      coverUrl: form.coverUrl || imported?.coverUrl || '',
-      tracks: imported?.tracks?.length ? imported.tracks : [],
-      label: imported?.label || '',
-      source: imported?.source || 'manual',
-      metalArchivesLink: imported?.metalArchivesLink || ''
-    };
-
-    persist([nextAlbum, ...albums]);
-    setForm({ artist: '', title: '', year: '', format: 'CD', coverUrl: '' });
-    setOpenId(nextAlbum.id);
-    setLoading(false);
-    setMessage(imported ? 'Album dodany z danymi z Metal Archives.' : 'Album dodany. Tracklistę możesz uzupełnić ręcznie po eksporcie JSON lub rozbudowie formularza.');
-  }
-
-  function removeAlbum(id) {
-    persist(albums.filter(album => album.id !== id));
-  }
 
   function exportJson() {
     const blob = new Blob([JSON.stringify(albums, null, 2)], { type: 'application/json' });
-    const href = URL.createObjectURL(blob);
+    const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
-    a.href = href;
-    a.download = `metal-collection-${new Date().toISOString().slice(0, 10)}.json`;
+    a.href = url;
+    a.download = `biblioteka-plyt-${new Date().toISOString().slice(0, 10)}.json`;
     a.click();
-    URL.revokeObjectURL(href);
+    URL.revokeObjectURL(url);
   }
 
-  async function importJson(event) {
-    const file = event.target.files?.[0];
+  function importJson(e) {
+    const file = e.target.files?.[0];
     if (!file) return;
-    try {
-      const data = JSON.parse(await file.text());
-      if (!Array.isArray(data)) throw new Error('wrong format');
-      persist(data);
-      setMessage('Zaimportowano kolekcję z pliku JSON.');
-    } catch {
-      setMessage('Nie udało się zaimportować pliku. Sprawdź, czy to poprawny JSON.');
-    }
-    event.target.value = '';
+    const reader = new FileReader();
+    reader.onload = () => {
+      try {
+        const parsed = JSON.parse(reader.result);
+        if (!Array.isArray(parsed)) throw new Error('Plik nie zawiera listy albumów.');
+        setAndSave(parsed.map((a) => ({ ...a, id: a.id || uid() })));
+      } catch (err) {
+        alert(err.message);
+      }
+    };
+    reader.readAsText(file);
   }
 
   return (
     <main>
       <section className="hero">
-        <div className="hero-content">
-          <div className="eyebrow"><Disc3 size={18} /> prywatna baza CD / LP</div>
-          <h1>Metal Collection</h1>
-          <p>Elegancka biblioteka płyt z okładkami, wyszukiwarką i rozwijaną tracklistą pobieraną przez serverless function.</p>
-          <div className="hero-actions">
-            <a className="ghost" href="https://app.netlify.com/start" target="_blank" rel="noreferrer"><Upload size={17} /> Netlify deploy</a>
-            <a className="ghost" href="https://github.com/new" target="_blank" rel="noreferrer"><GitBranch size={17} /> GitHub repo</a>
+        <div>
+          <div className="eyebrow">Prywatna kolekcja CD / LP</div>
+          <h1>Biblioteka płyt</h1>
+          <p>Nowoczesna baza albumów z okładkami, tracklistami i krajem wydania pobieranymi z Discogs.</p>
+        </div>
+        <div className="stats"><strong>{albums.length}</strong><span>albumów w kolekcji</span></div>
+      </section>
+
+      <section className="layout">
+        <aside>
+          <AddAlbumForm onAdd={addAlbum} />
+          <div className="panel tools">
+            <div className="panel-title">Backup</div>
+            <button className="ghost full" onClick={exportJson}><Download size={16} /> Eksport JSON</button>
+            <label className="ghost full upload"><Upload size={16} /> Import JSON<input type="file" accept="application/json" onChange={importJson} /></label>
           </div>
-        </div>
-        <div className="stats-card">
-          <div><strong>{stats.total}</strong><span>albumów</span></div>
-          <div><strong>{stats.artists}</strong><span>artystów</span></div>
-          <div><strong>{stats.cd}</strong><span>CD</span></div>
-          <div><strong>{stats.lp}</strong><span>LP</span></div>
-        </div>
-      </section>
+        </aside>
 
-      <section className="panel add-panel">
-        <div className="section-title"><Plus size={20} /><h2>Dodaj płytę</h2></div>
-        <form onSubmit={addAlbum} className="album-form">
-          <input value={form.artist} onChange={e => setForm({ ...form, artist: e.target.value })} placeholder="Wykonawca, np. Death" />
-          <input value={form.title} onChange={e => setForm({ ...form, title: e.target.value })} placeholder="Tytuł albumu, np. Symbolic" />
-          <input value={form.year} onChange={e => setForm({ ...form, year: e.target.value })} placeholder="Rok, np. 1995" inputMode="numeric" />
-          <select value={form.format} onChange={e => setForm({ ...form, format: e.target.value })}>
-            <option>CD</option>
-            <option>LP</option>
-            <option>Box</option>
-            <option>Digital</option>
-          </select>
-          <input className="wide" value={form.coverUrl} onChange={e => setForm({ ...form, coverUrl: e.target.value })} placeholder="Opcjonalny URL okładki, gdy chcesz nadpisać automatyczną" />
-          <button disabled={loading} type="submit">{loading ? <Loader2 className="spin" size={18} /> : <Plus size={18} />} Dodaj i pobierz tracklistę</button>
-        </form>
-        {message && <p className="message">{message}</p>}
-      </section>
-
-      <section className="toolbar">
-        <div className="searchbox"><Search size={18} /><input value={query} onChange={e => setQuery(e.target.value)} placeholder="Szukaj po artyście, albumie lub roku..." /></div>
-        <select value={format} onChange={e => setFormat(e.target.value)}>
-          <option value="all">Wszystkie formaty</option>
-          <option value="CD">CD</option>
-          <option value="LP">LP</option>
-          <option value="Box">Box</option>
-          <option value="Digital">Digital</option>
-        </select>
-        <button className="secondary" onClick={exportJson}><Download size={17} /> Eksport</button>
-        <button className="secondary" onClick={() => fileRef.current.click()}><Import size={17} /> Import</button>
-        <input ref={fileRef} type="file" accept="application/json" hidden onChange={importJson} />
-      </section>
-
-      <section className="grid">
-        {filtered.map(album => (
-          <article key={album.id} className={`album-card ${openId === album.id ? 'open' : ''}`}>
-            <button className="cover-button" onClick={() => setOpenId(openId === album.id ? null : album.id)} aria-label={`Otwórz ${album.title}`}>
-              {album.coverUrl ? <img src={album.coverUrl} alt={`${album.artist} - ${album.title}`} loading="lazy" /> : <div className="cover-placeholder"><Album size={46} /></div>}
-              <span className="format-pill">{album.format}</span>
-            </button>
-            <div className="album-body">
-              <div className="album-head">
-                <div>
-                  <h3>{album.title}</h3>
-                  <p>{album.artist} · {album.year || 'brak roku'}</p>
-                </div>
-                <button className="icon" onClick={() => setOpenId(openId === album.id ? null : album.id)}><ChevronDown size={20} /></button>
-              </div>
-              {openId === album.id && (
-                <div className="tracks">
-                  {album.label && <p className="meta">Label: {album.label}</p>}
-                  {album.tracks?.length ? album.tracks.map((track, index) => (
-                    <div className="track" key={`${track.number}-${track.title}-${index}`}>
-                      <span>{track.number || index + 1}</span>
-                      <strong>{track.title}</strong>
-                      <em>{track.length}</em>
-                    </div>
-                  )) : <p className="empty">Brak tracklisty. Spróbuj dokładniejszego tytułu lub dodaj ją ręcznie w JSON.</p>}
-                  <button className="delete" onClick={() => removeAlbum(album.id)}><Trash2 size={16} /> Usuń album</button>
-                </div>
-              )}
-            </div>
-          </article>
-        ))}
+        <section className="collection">
+          <div className="toolbar">
+            <div className="searchbox"><Search size={18} /><input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Szukaj po artyście, tytule, roku, kraju…" /></div>
+            <select value={format} onChange={(e) => setFormat(e.target.value)}><option value="all">Wszystkie formaty</option><option value="CD">CD</option><option value="LP">LP</option><option value="Vinyl">Vinyl</option><option value="Cassette">Cassette</option></select>
+          </div>
+          {refreshing ? <div className="notice">Odświeżam dane z Discogs…</div> : null}
+          <div className="grid">
+            {filtered.map((album) => <AlbumCard key={album.id} album={album} onDelete={deleteAlbum} onRefresh={refreshAlbum} />)}
+          </div>
+          {!filtered.length ? <div className="empty"><Disc3 size={44} /><h2>Brak albumów</h2><p>Dodaj pierwszą płytę z panelu po lewej stronie.</p></div> : null}
+        </section>
       </section>
     </main>
   );
