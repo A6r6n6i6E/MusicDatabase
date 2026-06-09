@@ -212,10 +212,12 @@ function AlbumCard({ album, onDelete, onUpdate }) {
   return (
     <article className="album-card">
       <button className="cover-button" onClick={() => setOpen(!open)} aria-label="Rozwiń album">
-        {album.coverUrl && !imageError ? (
-          <img className="cover" src={album.coverUrl} alt={`Okładka ${album.title}`} onError={() => setImageError(true)} />
-        ) : <PlaceholderCover />}
-      </button>
+  {album.mediaFormat ? <span className="format-pill">{album.mediaFormat}</span> : null}
+
+  {album.coverUrl && !imageError ? (
+    <img className="cover" src={album.coverUrl} alt={`Okładka ${album.title}`} onError={() => setImageError(true)} />
+  ) : <PlaceholderCover />}
+</button>
       <div className="album-body">
         <div className="album-head">
           <div>
