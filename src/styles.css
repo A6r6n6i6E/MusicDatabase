@@ -17,14 +17,17 @@ body {
   margin: 0;
   min-height: 100vh;
   background:
-    radial-gradient(circle at top left, rgba(124, 58, 237, 0.30), transparent 35rem),
-    radial-gradient(circle at top right, rgba(225, 29, 72, 0.20), transparent 32rem),
+    linear-gradient(rgba(3, 6, 12, 0.82), rgba(3, 6, 12, 0.92)),
+    radial-gradient(circle at top left, rgba(124, 58, 237, 0.22), transparent 35rem),
+    radial-gradient(circle at top right, rgba(225, 29, 72, 0.18), transparent 32rem),
+    url('./background.jpg') center top / cover fixed no-repeat,
     var(--bg);
   color: var(--text);
 }
 button, input, select { font: inherit; }
-main { width: min(1280px, calc(100% - 32px)); margin: 0 auto; padding: 32px 0 56px; }
+main { width: 100%; margin: 0; padding: 22px 20px 56px; }
 .hero {
+  width: 100%;
   display: flex;
   justify-content: space-between;
   align-items: stretch;
@@ -41,7 +44,7 @@ h1 { margin: 8px 0 10px; font-size: clamp(40px, 6vw, 78px); line-height: .95; le
 .stats { min-width: 180px; border: 1px solid var(--line); border-radius: 24px; padding: 22px; background: rgba(255,255,255,0.04); display: grid; place-content: center; text-align: center; }
 .stats strong { font-size: 52px; line-height: 1; }
 .stats span { color: var(--muted); }
-.layout { display: grid; grid-template-columns: 360px 1fr; gap: 24px; margin-top: 24px; align-items: start; }
+.layout { display: grid; grid-template-columns: 360px minmax(0, 1fr); gap: 24px; margin-top: 24px; align-items: start; }
 aside { position: sticky; top: 16px; display: grid; gap: 16px; }
 .panel { border: 1px solid var(--line); border-radius: 26px; padding: 20px; background: var(--panel); backdrop-filter: blur(18px); box-shadow: 0 20px 50px rgba(0,0,0,.22); }
 .panel-title { display: flex; align-items: center; gap: 10px; font-weight: 800; margin-bottom: 16px; }
@@ -102,11 +105,10 @@ h3 { margin: 0; font-size: 20px; letter-spacing: -0.03em; }
 .track-no { color: #fda4af; font-weight: 900; }
 .duration, .empty-track { color: var(--muted); font-size: 13px; }
 .discogs-link { margin-top: 14px; display: inline-flex; align-items: center; gap: 6px; color: #fda4af; text-decoration: none; font-weight: 800; }
-.actions-row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 16px; }
 .empty { border: 1px dashed var(--line); border-radius: 28px; padding: 44px; text-align: center; color: var(--muted); }
 .empty h2 { color: var(--text); margin-bottom: 6px; }
 @media (max-width: 920px) {
-  main { width: min(100% - 20px, 760px); padding-top: 12px; }
+  main { width: 100%; padding: 12px 10px 32px; }
   .hero, .layout { grid-template-columns: 1fr; display: grid; }
   aside { position: static; }
   .hero { padding: 24px; }
@@ -114,16 +116,13 @@ h3 { margin: 0; font-size: 20px; letter-spacing: -0.03em; }
   .toolbar { grid-template-columns: 1fr; }
 }
 @media (max-width: 520px) {
-  .two-cols, .actions-row { grid-template-columns: 1fr; }
+  .two-cols { grid-template-columns: 1fr; }
   .cover-button { height: 320px; }
   .hero { border-radius: 24px; }
   .panel, .album-card { border-radius: 22px; }
 }
 
-/* v4: autocomplete + cloud sync + compact mobile grid */
-.sync p { margin: 0; color: var(--muted); font-size: 13px; line-height: 1.5; }
-.sync.online { border-color: rgba(34,197,94,.26); }
-.sync.offline { border-color: rgba(251,191,36,.28); }
+/* v5: autocomplete + cloud database + compact mobile grid */
 .spin { animation: spin 1s linear infinite; }
 @keyframes spin { to { transform: rotate(360deg); } }
 .suggest-label { position: relative; }
@@ -170,7 +169,7 @@ h3 { margin: 0; font-size: 20px; letter-spacing: -0.03em; }
 .suggestions small { display: block; color: var(--muted); margin-top: 2px; font-size: 11px; }
 
 @media (max-width: 520px) {
-  main { width: min(100% - 12px, 520px); padding-bottom: 28px; }
+  main { width: 100%; padding: 8px 6px 28px; }
   .hero { padding: 18px; gap: 14px; }
   h1 { font-size: 38px; letter-spacing: -0.06em; }
   .hero p { font-size: 14px; }
@@ -188,8 +187,6 @@ h3 { margin: 0; font-size: 20px; letter-spacing: -0.03em; }
   .round { width: 32px; height: 32px; }
   .format-pill { top: 8px; left: 8px; font-size: 10px; padding: 5px 8px; }
   .meta-grid { display: none; }
-  .actions-row { grid-template-columns: 1fr; gap: 6px; margin-top: 10px; }
-  .actions-row button { padding: 8px 9px; font-size: 12px; }
   .tracklist li { grid-template-columns: 32px 1fr auto; font-size: 12px; gap: 6px; }
   .toolbar { gap: 8px; margin-bottom: 10px; }
   .two-cols { grid-template-columns: 1fr 1fr; }

@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
-import { Search, Plus, Disc3, Upload, Download, Trash2, RefreshCcw, ChevronDown, ExternalLink, AlertTriangle, Cloud, CloudOff, Loader2 } from 'lucide-react';
+import { Search, Plus, Disc3, Upload, Download, ChevronDown, ExternalLink, AlertTriangle, Loader2 } from 'lucide-react';
 import './styles.css';
 
 const STORAGE_KEY = 'biblioteka-plyt-discogs-v4-cache';
@@ -36,17 +36,7 @@ async function createCloudAlbum(album) {
   });
 }
 
-async function updateCloudAlbum(album) {
-  return apiJson('/.netlify/functions/collection', {
-    method: 'PUT',
-    headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ id: album.id, album })
-  });
-}
 
-async function deleteCloudAlbum(id) {
-  return apiJson(`/.netlify/functions/collection?id=${encodeURIComponent(id)}`, { method: 'DELETE' });
-}
 
 function PlaceholderCover() {
   return (
@@ -58,7 +48,7 @@ function PlaceholderCover() {
 }
 
 function TrackList({ tracks }) {
-  if (!tracks?.length) return <p className="empty-track">Brak tracklisty. Spróbuj odświeżyć dane z Discogs albo dodaj utwory ręcznie w eksporcie JSON.</p>;
+  if (!tracks?.length) return <p className="empty-track">Brak tracklisty. Spróbuj dodać album z dokładniejszym tytułem albo uzupełnij utwory ręcznie w eksporcie JSON.</p>;
   return (
     <ol className="tracklist">
       {tracks.map((track, index) => (
@@ -72,7 +62,7 @@ function TrackList({ tracks }) {
   );
 }
 
-function AlbumCard({ album, onDelete, onRefresh }) {
+function AlbumCard({ album }) {
   const [open, setOpen] = useState(false);
   const [imageError, setImageError] = useState(false);
   const country = album.country ? ` • ${album.country}` : '';
@@ -108,10 +98,6 @@ function AlbumCard({ album, onDelete, onRefresh }) {
             {album.discogsUrl ? <a className="discogs-link" href={album.discogsUrl} target="_blank" rel="noreferrer">Otwórz w Discogs <ExternalLink size={14} /></a> : null}
           </div>
         ) : null}
-        <div className="actions-row">
-          <button className="ghost" onClick={() => onRefresh(album)}><RefreshCcw size={16} /> Odśwież</button>
-          <button className="danger" onClick={() => onDelete(album.id)}><Trash2 size={16} /> Usuń</button>
-        </div>
       </div>
     </article>
   );
@@ -247,7 +233,6 @@ function App() {
   const [albums, setAlbums] = useState(loadLocalAlbums);
   const [query, setQuery] = useState('');
   const [format, setFormat] = useState('all');
-  const [refreshing, setRefreshing] = useState('');
   const [cloud, setCloud] = useState({ loading: true, enabled: false, message: 'Łączenie z bazą online…' });
 
   function setAndCache(next) {
@@ -262,10 +247,10 @@ function App() {
         const data = await loadCloudAlbums();
         if (!mounted) return;
         setAndCache(data.albums || []);
-        setCloud({ loading: false, enabled: true, message: 'Baza online aktywna — dane synchronizują się między urządzeniami.' });
+        setCloud({ loading: false, enabled: true, message: '' });
       } catch (err) {
         if (!mounted) return;
-        setCloud({ loading: false, enabled: false, message: err.message || 'Brak połączenia z bazą online — używam pamięci przeglądarki.' });
+        setCloud({ loading: false, enabled: false, message: err.message || '' });
       }
     }
     load();
@@ -275,27 +260,6 @@ function App() {
   async function addAlbum(album) {
     if (cloud.enabled) await createCloudAlbum(album);
     setAndCache([album, ...albums]);
-  }
-
-  async function deleteAlbum(id) {
-    if (!confirm('Usunąć album z kolekcji?')) return;
-    if (cloud.enabled) await deleteCloudAlbum(id);
-    setAndCache(albums.filter((a) => a.id !== id));
-  }
-
-  async function refreshAlbum(album) {
-    setRefreshing(album.id);
-    try {
-      const params = new URLSearchParams({ artist: album.artist, title: album.title, year: album.year || '', format: album.mediaFormat || '' });
-      const data = await apiJson(`/.netlify/functions/discogs-search?${params.toString()}`);
-      const updated = { ...album, ...data.album, id: album.id, mediaFormat: album.mediaFormat || data.album.format, updatedAt: new Date().toISOString() };
-      if (cloud.enabled) await updateCloudAlbum(updated);
-      setAndCache(albums.map((a) => (a.id === album.id ? updated : a)));
-    } catch (err) {
-      alert(err.message);
-    } finally {
-      setRefreshing('');
-    }
   }
 
   const filtered = useMemo(() => {
@@ -344,17 +308,13 @@ function App() {
         <div>
           <div className="eyebrow">Prywatna kolekcja CD / LP</div>
           <h1>Biblioteka płyt</h1>
-          <p>Nowoczesna baza albumów z okładkami, tracklistami, krajem wydania i synchronizacją online.</p>
+          <p>Nowoczesna baza albumów z okładkami, tracklistami i krajem wydania.</p>
         </div>
         <div className="stats"><strong>{albums.length}</strong><span>albumów w kolekcji</span></div>
       </section>
 
       <section className="layout">
         <aside>
-          <div className={`sync panel ${cloud.enabled ? 'online' : 'offline'}`}>
-            <div className="panel-title">{cloud.loading ? <Loader2 className="spin" size={19} /> : cloud.enabled ? <Cloud size={19} /> : <CloudOff size={19} />} Synchronizacja</div>
-            <p>{cloud.message}</p>
-          </div>
           <AddAlbumForm onAdd={addAlbum} />
           <div className="panel tools">
             <div className="panel-title">Backup</div>
@@ -368,9 +328,8 @@ function App() {
             <div className="searchbox"><Search size={18} /><input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Szukaj po artyście, tytule, roku, kraju…" /></div>
             <select value={format} onChange={(e) => setFormat(e.target.value)}><option value="all">Wszystkie formaty</option><option value="CD">CD</option><option value="LP">LP</option><option value="Vinyl">Vinyl</option><option value="Cassette">Cassette</option></select>
           </div>
-          {refreshing ? <div className="notice">Odświeżam dane z Discogs…</div> : null}
           <div className="grid">
-            {filtered.map((album) => <AlbumCard key={album.id} album={album} onDelete={deleteAlbum} onRefresh={refreshAlbum} />)}
+            {filtered.map((album) => <AlbumCard key={album.id} album={album} />)}
           </div>
           {!filtered.length ? <div className="empty"><Disc3 size={44} /><h2>Brak albumów</h2><p>Dodaj pierwszą płytę z panelu po lewej stronie.</p></div> : null}
         </section>
