@@ -86,12 +86,7 @@ function AlbumCard({ album }) {
             <ChevronDown className={open ? 'rotate' : ''} size={20} />
           </button>
         </div>
-        <div className="meta-grid">
-          {album.label ? <span>Label: {album.label}</span> : null}
-          {album.format ? <span>Format: {album.format}</span> : null}
-          {album.genres?.length ? <span>Gatunek: {album.genres.join(', ')}</span> : null}
-          {album.styles?.length ? <span>Styl: {album.styles.join(', ')}</span> : null}
-        </div>
+      
         {open ? (
           <div className="expanded">
             <TrackList tracks={album.tracks} />
