@@ -228,10 +228,11 @@ function AlbumCard({ album, onDelete, onUpdate }) {
             <ChevronDown className={open ? 'rotate' : ''} size={20} />
           </button>
         </div>
-        <div className="meta-grid">
+    {/*    <div className="meta-grid">
           {album.genres?.length ? <span>Gatunek: {album.genres.join(', ')}</span> : null}
           {album.styles?.length ? <span>Styl: {album.styles.join(', ')}</span> : null}
         </div>
+        */}
         {open ? (
           <div className="expanded">
             {editing ? (
@@ -487,7 +488,6 @@ function App() {
         <div>
           <div className="eyebrow">Prywatna kolekcja CD / LP</div>
           <h1>Biblioteka płyt</h1>
-          <p>Nowoczesna baza albumów z okładkami, tracklistami i krajem wydania.</p>
         </div>
         <div className="stats"><strong>{albums.length}</strong><span>albumów w kolekcji</span></div>
       </section>
