@@ -222,7 +222,7 @@ function AlbumCard({ album, onDelete, onUpdate }) {
         <div className="album-head">
           <div>
             <h3>{album.title}</h3>
-            <p>{album.artist} • {year}{country}</p>
+            <p>{album.artist} • {year}</p>
           </div>
           <button className="round" onClick={() => setOpen(!open)} aria-label="Rozwiń tracklistę">
             <ChevronDown className={open ? 'rotate' : ''} size={20} />
