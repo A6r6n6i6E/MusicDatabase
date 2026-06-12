@@ -486,7 +486,7 @@ async function addAlbum(album) {
       const yearA = parseInt(a.year || a.released || '9999', 10);
       const yearB = parseInt(b.year || b.released || '9999', 10);
 
-      if (yearA !== yearB) return yearA - yearB;
+      if (yearA !== yearB) return yearB - yearA;
 
       const artistCompare = String(a.artist || '').localeCompare(String(b.artist || ''), 'pl');
       if (artistCompare !== 0) return artistCompare;
