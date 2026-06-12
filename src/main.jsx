@@ -9,6 +9,30 @@ function uid() {
   return `${Date.now()}-${Math.random().toString(16).slice(2)}`;
 }
 
+function normalizeText(value) {
+  return String(value || '')
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^\w\s]/g, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function albumKey(album) {
+  const artist = normalizeText(album.artist);
+  const title = normalizeText(album.title);
+  const year = String(album.year || album.released || '').trim();
+  const format = normalizeText(album.mediaFormat || '');
+
+  return `${artist}__${title}__${year}__${format}`;
+}
+
+function isDuplicateAlbum(newAlbum, albums) {
+  const newKey = albumKey(newAlbum);
+  return albums.some((album) => albumKey(album) === newKey);
+}
+
 function loadLocalAlbums() {
   try { return JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]'); } catch { return []; }
 }
@@ -427,10 +451,15 @@ function App() {
     return () => { mounted = false; };
   }, []);
 
-  async function addAlbum(album) {
-    if (cloud.enabled) await createCloudAlbum(album);
-    setAndCache([album, ...albums]);
+async function addAlbum(album) {
+  if (isDuplicateAlbum(album, albums)) {
+    alert(`Album „${album.artist} - ${album.title}” jest już w kolekcji.`);
+    return;
   }
+
+  if (cloud.enabled) await createCloudAlbum(album);
+  setAndCache([album, ...albums]);
+}
 
   async function updateAlbum(album) {
     if (cloud.enabled) await updateCloudAlbum(album);
@@ -443,14 +472,31 @@ function App() {
   }
 
   const filtered = useMemo(() => {
-    const q = query.toLowerCase().trim();
-    return albums.filter((a) => {
-      const text = `${a.artist} ${a.title} ${a.year} ${a.country} ${a.label}`.toLowerCase();
-      const matchesQuery = !q || text.includes(q);
-      const matchesFormat = format === 'all' || (a.mediaFormat || a.format || '').toLowerCase().includes(format.toLowerCase());
-      return matchesQuery && matchesFormat;
+  const q = query.toLowerCase().trim();
+
+  const result = albums.filter((a) => {
+    const text = `${a.artist} ${a.title} ${a.year} ${a.country} ${a.label}`.toLowerCase();
+    const matchesQuery = !q || text.includes(q);
+    const matchesFormat = format === 'all' || (a.mediaFormat || a.format || '').toLowerCase().includes(format.toLowerCase());
+    return matchesQuery && matchesFormat;
+  });
+
+  if (q) {
+    return [...result].sort((a, b) => {
+      const yearA = parseInt(a.year || a.released || '9999', 10);
+      const yearB = parseInt(b.year || b.released || '9999', 10);
+
+      if (yearA !== yearB) return yearA - yearB;
+
+      const artistCompare = String(a.artist || '').localeCompare(String(b.artist || ''), 'pl');
+      if (artistCompare !== 0) return artistCompare;
+
+      return String(a.title || '').localeCompare(String(b.title || ''), 'pl');
     });
-  }, [albums, query, format]);
+  }
+
+  return result;
+}, [albums, query, format]);
 
   function exportJson() {
     const blob = new Blob([JSON.stringify(albums, null, 2)], { type: 'application/json' });
@@ -467,17 +513,31 @@ function App() {
     if (!file) return;
     const reader = new FileReader();
     reader.onload = async () => {
-      try {
-        const parsed = JSON.parse(reader.result);
-        if (!Array.isArray(parsed)) throw new Error('Plik nie zawiera listy albumów.');
-        const imported = parsed.map((a) => ({ ...a, id: a.id || uid(), updatedAt: new Date().toISOString() }));
-        if (cloud.enabled) {
-          for (const album of imported) await createCloudAlbum(album);
-        }
-        setAndCache([...imported, ...albums]);
-      } catch (err) {
-        alert(err.message);
-      }
+try {
+  const parsed = JSON.parse(reader.result);
+  if (!Array.isArray(parsed)) throw new Error('Plik nie zawiera listy albumów.');
+
+  const imported = parsed.map((a) => ({
+    ...a,
+    id: a.id || uid(),
+    updatedAt: new Date().toISOString()
+  }));
+
+  const withoutDuplicates = imported.filter((album) => !isDuplicateAlbum(album, albums));
+
+  if (!withoutDuplicates.length) {
+    alert('Wszystkie albumy z importowanego pliku są już w kolekcji.');
+    return;
+  }
+
+  if (cloud.enabled) {
+    for (const album of withoutDuplicates) await createCloudAlbum(album);
+  }
+
+  setAndCache([...withoutDuplicates, ...albums]);
+} catch (err) {
+  alert(err.message);
+}
     };
     reader.readAsText(file);
   }
